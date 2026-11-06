@@ -1,0 +1,15 @@
+{
+  "$schema": "https://langgra.ph/schema.json",
+  "python_version": "3.11",
+  "dependencies": ["."],
+  "graphs": {
+    "commerce_agent": "./src/commerce_agent/graph.py:graph"
+  },
+  "checkpointer": {
+    "ttl": {
+      "strategy": "keep_latest",
+      "sweep_interval_minutes": 60,
+      "default_ttl": 43200
+    }
+  }
+}

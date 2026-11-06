@@ -1,0 +1,28 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+
+# Generated PyInstaller artifacts are not part of the backend runtime.
+# Excluding them prevents stale CLI binaries from entering deploy images.
+build
+dist
+.pytest_cache
+.mypy_cache
+.DS_Store
+ml_pipeline_visual.png
+data_pipeline_visual.png
+
+# Private configuration and generated artifacts
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.log
+*.dump
+*.sqlite*
+*.zip
+.pytest_cache/

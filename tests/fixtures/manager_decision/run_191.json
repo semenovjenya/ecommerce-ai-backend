@@ -1,0 +1,7 @@
+{
+  "run_id": 191,
+  "case": "units_revenue_label_swap",
+  "hazard": "Revenue change is presented as sales-unit change.",
+  "expected_code": "sales_units_pct_revenue_pct_label_swap",
+  "test_reference": "tests/test_prompt_pipeline_v2.py::test_offline_goldens_cover_runs_190_191_196_197"
+}

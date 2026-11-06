@@ -1,0 +1,44 @@
+{
+  "run_id": 190,
+  "user_query": "Какой товар принес больше прибыли в этом месяце?",
+  "expected_query_mode": "lookup",
+  "primary_domain": "finance",
+  "evidence_package": {
+    "confirmed_facts": [
+      {
+        "metric": "contribution_margin_rub",
+        "value": 125000.00,
+        "unit": "RUB",
+        "period": "2026-06-01/2026-06-25",
+        "sku": "46227",
+        "status": "confirmed",
+        "evidence_ref": "run190:finance:sku_report"
+      }
+    ],
+    "blocking_gaps": [
+      {
+        "sku": "46227",
+        "metric": "net_profit_rub",
+        "status": "no_data",
+        "blocking": true,
+        "reason": "metric_absent"
+      }
+    ]
+  },
+  "hazardous_draft": "Чистая прибыль SKU 46227 составила 125 000,00 ₽ — это самый прибыльный товар.",
+  "corrected_draft": "SKU 46227 лидирует по contribution margin: 125 000,00 ₽ за 1–25 июня. Чистая прибыль не рассчитана.",
+  "expected_violation_codes": [
+    "contribution_margin_as_net_profit"
+  ],
+  "acceptance_hazards": [
+    "contribution_margin_is_not_net_profit",
+    "ranking_is_limited_to_returned_scope"
+  ],
+  "required_corrected_fragments": [
+    "contribution margin",
+    "Чистая прибыль не рассчитана"
+  ],
+  "forbidden_corrected_fragments": [
+    "Чистая прибыль SKU 46227 составила"
+  ]
+}

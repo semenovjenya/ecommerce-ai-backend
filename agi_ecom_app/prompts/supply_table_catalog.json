@@ -1,0 +1,119 @@
+{
+  "catalog_name": "supply_agent_table_guide",
+  "version": "2026-04-06.compact",
+  "language": "ru",
+  "database": {
+    "schema": "supply",
+    "note": "Не хранить в этом файле пароли, DSN и API-ключи."
+  },
+  "purpose": "Короткая инструкция для агента остатков и поставок: выбрать правильные таблицы WB-supply, объяснить выбор, проверить пробелы в данных и выдать аналитический ответ по наличию, дозаказу и входящим поставкам.",
+  "agent_actions": {
+    "workflow": [
+      "Определи намерение пользователя: остатки, наличие, дефицит, out-of-stock, покрытие запасом, дозаказ, overstock, поставки, товары в пути или отладка выгрузки.",
+      "Выбери 1-3 основные таблицы из routing. Не начинай с технических progress-таблиц, если есть нормализованное представление.",
+      "Определи дату снимка: если пользователь не указал дату, бери последний доступный полный snapshot_date.",
+      "Проверь data_gaps и поле empty_now. Если таблица пустая, не делай выводы по ней и явно напиши 'пробел в данных'.",
+      "Сформируй SQL/запрос только по нужным таблицам, с агрегацией на уровне grain.",
+      "Выдай короткий ответ по-русски: таблица с фактами, затем 2-5 выводов и операционные рекомендации.",
+      "Разделяй выводы и рекомендации: в выводах пиши только диагностический факт и влияние, действия выноси только в рекомендации.",
+      "Если вопрос про продажи, финансы, рекламу или карточку, сформируй служебный cross_agent_requests к нужному домену; не пиши пользователю 'передать в профильный агент'."
+    ],
+    "output_contract": {
+      "agent_should_return": [
+        "Какие таблицы выбраны и почему.",
+        "Какая дата снимка использована.",
+        "Какие ключи/связи использованы для join.",
+        "Таблицу результата для пользователя: артикул/SKU, бренд, предмет, остаток, полный остаток, продажи за 7 дней, дней запаса, флаг дозаказа, рекомендуемый дозаказ или статус поставки - только если эти поля есть в источнике; nm_id оставлять только для внутренних join.",
+        "2-5 коротких выводов.",
+        "1-5 рекомендаций с действиями: проверить дозаказ, проверить поставку, удержать, распродать/не закупать только после проверки цены и маржи; смежные проверки оформлять только через cross_agent_requests.",
+        "Пробелы в данных, если нужная таблица пустая или нужной метрики нет."
+      ],
+      "agent_should_not_return": [
+        "Секреты, DSN, пароли, API-ключи.",
+        "SLA, fulfillment latency или точные сроки приемки как факт, если их нет в данных.",
+        "CAC, ROMI, MER, прибыльность, contribution after COGS или cash-flow как факт.",
+        "Выводы по продажам или рекламе без служебного cross_agent_requests к профильному слою."
+      ]
+    }
+  },
+  "routing": [
+    {
+      "intent": "актуальные остатки и покрытие запасом",
+      "use_first": ["supply.wb_supplier_stocks"],
+      "join": "snapshot_date + nm_id + supplier_article; для контекста продаж использовать только готовый get_supply_overview",
+      "output": ["snapshot_date", "nm_id", "supplier_article", "brand", "subject", "quantity", "quantity_full", "in_way_to_client", "in_way_from_client"]
+    },
+    {
+      "intent": "дозаказ, дефицит и out-of-stock риск",
+      "use_first": ["supply.wb_supplier_stocks"],
+      "join": "snapshot_date + nm_id + supplier_article",
+      "output": ["артикул", "доступный остаток", "полный остаток", "недоступный остаток", "продажи за 7 дней из get_supply_overview", "avg_daily_sales_7d", "days_of_stock", "total_stock_days_for_audit", "reorder_flag", "reorder_qty_recommended"],
+      "warning": "days_of_stock = доступный остаток / среднедневные продажи за 7 дней. total_stock_days_for_audit включает недоступные единицы и не является пользовательским запасом в днях."
+    },
+    {
+      "intent": "входящие поставки и готовность к продаже",
+      "use_first": ["supply.wb_supplies", "supply.wb_supplies_goods"],
+      "join": "snapshot_date + supply_id",
+      "output": ["snapshot_date", "supply_id", "supply_date", "status_id", "warehouse_name", "quantity", "ready_for_sale_quantity", "accepted_quantity", "unloading_quantity", "sku_count", "goods_quantity"]
+    },
+    {
+      "intent": "состав поставки по товарам",
+      "use_first": ["supply.wb_supplies_goods", "supply.wb_supplies"],
+      "join": "snapshot_date + supply_id; если нужен товарный фильтр, использовать nm_id",
+      "output": ["snapshot_date", "supply_id", "nm_id", "quantity"]
+    },
+    {
+      "intent": "overstock или запас без продаж",
+      "use_first": ["supply.wb_supplier_stocks"],
+      "join": "snapshot_date + nm_id + supplier_article",
+      "output": ["артикул", "доступный остаток", "полный остаток", "недоступный остаток", "продажи за 7 дней из get_supply_overview", "days_of_stock", "total_stock_days_for_audit", "reorder_flag"]
+    }
+  ],
+  "tables": [
+    {
+      "name": "supply.wb_supplier_stocks",
+      "role": "актуальный снимок остатков WB",
+      "use": "наличие, полный остаток, товары в пути к клиенту/от клиента, база для оценки дефицита и overstock",
+      "grain": "snapshot_date + nm_id + supplier_article + warehouse",
+      "keys": ["snapshot_date", "nm_id", "supplier_article"],
+      "metrics": ["quantity", "quantity_full", "in_way_to_client", "in_way_from_client"],
+      "empty_now": false
+    },
+    {
+      "name": "supply.wb_supplies",
+      "role": "актуальный снимок поставок",
+      "use": "статус поставки, склад, количество, готовность к продаже, принято и на разгрузке",
+      "grain": "snapshot_date + supply_id",
+      "keys": ["snapshot_date", "supply_id"],
+      "metrics": ["quantity", "ready_for_sale_quantity", "accepted_quantity", "unloading_quantity", "status_id"],
+      "empty_now": false
+    },
+    {
+      "name": "supply.wb_supplies_goods",
+      "role": "товарный состав поставок",
+      "use": "какие nm_id и количества входят в поставку",
+      "grain": "snapshot_date + supply_id + nm_id",
+      "keys": ["snapshot_date", "supply_id", "nm_id"],
+      "metrics": ["quantity"],
+      "joins": ["supply_id -> wb_supplies.supply_id"],
+      "empty_now": false
+    }
+  ],
+  "data_gaps": [
+    {
+      "metric": "SLA / fulfillment latency",
+      "reason": "В supply-слое нет полноценного источника фактического SLA и времени исполнения доставки.",
+      "impact": "Нельзя подтверждать SLA-риск или задержку фулфилмента, только риск доступности через остатки и поставки."
+    },
+    {
+      "metric": "cash-flow / working capital",
+      "reason": "В supply-слое нет платежного календаря, условий закупки и кассового планирования.",
+      "impact": "Нельзя подтверждать давление на оборотку или cash gap."
+    },
+    {
+      "metric": "profitability",
+      "reason": "В supply-слое нет комиссий, логистики, хранения, штрафов и COGS.",
+      "impact": "Нельзя подтверждать прибыльность или contribution after COGS."
+    }
+  ]
+}

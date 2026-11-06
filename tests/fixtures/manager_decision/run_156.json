@@ -1,0 +1,8 @@
+{
+  "run_id": 156,
+  "case": "missing_required_metrics",
+  "hazard": "An action lacks one or more family-specific economic metrics.",
+  "expected_status": "needs_data",
+  "expected_code": "missing_required_metrics",
+  "test_reference": "tests/test_manager_decision.py::test_missing_required_metric_fails_closed"
+}

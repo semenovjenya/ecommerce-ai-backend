@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0",
+  "corpus_id": "ai-ecom-legacy-m0-v1",
+  "description": "Portfolio regression cases with synthetic financial examples; hashes refer to this export, not the private migration baseline.",
+  "fixtures": [
+    {
+      "case_id": "prompt-run-190",
+      "category": "metric-substitution",
+      "source_run_id": 190,
+      "path": "tests/fixtures/prompt_v2/run_190.json",
+      "sha256": "9bfe8677bbbacb97297927823eafc7ccdc3d95f77aca772ce607bf536e73ebfc"
+    },
+    {
+      "case_id": "prompt-run-191",
+      "category": "evidence-grounding",
+      "source_run_id": 191,
+      "path": "tests/fixtures/prompt_v2/run_191.json",
+      "sha256": "0170aa675d0363b125fabad3c979248342817df43ffeb12a89c103f26dceb0db"
+    },
+    {
+      "case_id": "prompt-run-196",
+      "category": "guardrail",
+      "source_run_id": 196,
+      "path": "tests/fixtures/prompt_v2/run_196.json",
+      "sha256": "aaee753a14337327b20bf8fa8f900f6aad1f4a876ed1b960f1941c2af940d117"
+    },
+    {
+      "case_id": "prompt-run-197",
+      "category": "guardrail",
+      "source_run_id": 197,
+      "path": "tests/fixtures/prompt_v2/run_197.json",
+      "sha256": "6b877c5870102ad6b24f06c035c612590e1cf29acf4d30abd2696be72baffab9"
+    },
+    {
+      "case_id": "manager-run-149",
+      "category": "coverage",
+      "source_run_id": 149,
+      "path": "tests/fixtures/manager_decision/run_149.json",
+      "sha256": "bdfba04371cf4340d00ac37a6f8d74f14be133eb92e7be828af4b246ec338e7e"
+    },
+    {
+      "case_id": "manager-run-156",
+      "category": "manager-safety",
+      "source_run_id": 156,
+      "path": "tests/fixtures/manager_decision/run_156.json",
+      "sha256": "b5efd99712232d72736044329eef908eb386d10c70769b5f22387cb759ba7b86"
+    },
+    {
+      "case_id": "manager-run-160",
+      "category": "manager-safety",
+      "source_run_id": 160,
+      "path": "tests/fixtures/manager_decision/run_160.json",
+      "sha256": "ab036eff9aa04dac50c5358842810e26bdb13edfd0ebc4caf001255119fa5237"
+    },
+    {
+      "case_id": "manager-run-162",
+      "category": "manager-safety",
+      "source_run_id": 162,
+      "path": "tests/fixtures/manager_decision/run_162.json",
+      "sha256": "6e43f157331df303022b490839aaf0f3418d7ca3b4179dd29e9546023ce7673a"
+    },
+    {
+      "case_id": "manager-run-191",
+      "category": "manager-safety",
+      "source_run_id": 191,
+      "path": "tests/fixtures/manager_decision/run_191.json",
+      "sha256": "48709efd80c754a2f59d02856f175738d8c5f557adfd559a836856888c35bb37"
+    },
+    {
+      "case_id": "manager-run-192",
+      "category": "manager-safety",
+      "source_run_id": 192,
+      "path": "tests/fixtures/manager_decision/run_192.json",
+      "sha256": "edb0c57a67ff02de9938b76a4a3d1cee0fab217a8379a4d96b17c1993874e7b3"
+    },
+    {
+      "case_id": "manager-run-196",
+      "category": "manager-safety",
+      "source_run_id": 196,
+      "path": "tests/fixtures/manager_decision/run_196.json",
+      "sha256": "d45b7663131f86e029597e4c80dbdac3085ad3a288640083219d8b91cd978e13"
+    },
+    {
+      "case_id": "manager-run-197",
+      "category": "manager-safety",
+      "source_run_id": 197,
+      "path": "tests/fixtures/manager_decision/run_197.json",
+      "sha256": "bcb5f993e1b21ba1c9a8ff54c3572a7492da61115c247c5dbce07658aa5ff3da"
+    }
+  ]
+}

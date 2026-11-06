@@ -1,0 +1,23 @@
+name: ai-ecom-commerce-agent-persistence
+
+services:
+  agent-postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: commerce_agent
+      POSTGRES_USER: commerce_agent
+      POSTGRES_PASSWORD: ${COMMERCE_AGENT_POSTGRES_PASSWORD:-commerce-agent-local-only}
+    ports:
+      - "127.0.0.1:${COMMERCE_AGENT_POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - agent-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U commerce_agent -d commerce_agent"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  agent-postgres-data:

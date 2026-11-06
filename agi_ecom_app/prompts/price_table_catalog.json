@@ -1,0 +1,142 @@
+{
+  "catalog_name": "price_agent_table_guide",
+  "version": "2026-07-22.price-context-v1",
+  "language": "ru",
+  "database": {
+    "schemas": ["analytics_ai", "pricing"],
+    "note": "Не хранить в этом файле пароли, DSN и API-ключи."
+  },
+  "purpose": "Короткая инструкция для агента цен: выбрать правильные таблицы WB-цен, конкурентной выдачи и скидок, объяснить выбор, проверить пробелы в данных и выдать аналитический ответ по ценовому позиционированию.",
+  "agent_actions": {
+    "workflow": [
+      "Определи намерение пользователя: цены конкурентов, дороже/дешевле рынка, скидки, ценовой сегмент, переоценка, конкретный nm_id или артикул.",
+      "Сначала используй get_price_context: он возвращает однозначные слои цены, свежесть и качество конкурентного набора.",
+      "get_price_competitor_overview и get_price_competitor_details используй для детализации, но legacy source_price_promo из raw не должен переопределять канонические цены get_price_context.",
+      "Если нужен SQL, выбирай 1-3 таблицы из routing и сохраняй агрегацию на уровне grain.",
+      "Для analytics_ai.wb_price_ai_competitors_raw всегда учитывай дедупликацию: run_date + source_nm_id + competitor_nm_id.",
+      "Если вопрос про эффект цены на продажи, маржу или видимость, оформи служебный cross_agent_requests к sales, finance или marketing.",
+      "Выдай короткий ответ по-русски: таблица с фактами, затем 2-5 выводов и операционные рекомендации."
+    ],
+    "output_contract": {
+      "agent_should_return": [
+        "Какие таблицы выбраны и почему.",
+        "Какой run_date или snapshot_date использован.",
+        "Какие ключи/связи использованы для join.",
+        "Таблицу результата: артикул, nm_id, наша промо-цена, медиана конкурентов, разрыв, доля конкурентов дешевле/дороже, статус цены.",
+        "2-5 коротких выводов.",
+        "1-5 рекомендаций с действиями: удержать, проверить снижение, проверить повышение, проверить конкурентов вручную.",
+        "Пробелы в данных, если нужная таблица пустая или нужной метрики нет."
+      ],
+      "agent_should_not_return": [
+        "Секреты, DSN, пароли, API-ключи.",
+        "Сырой JSON без явной просьбы пользователя.",
+        "Причинность между ценой и продажами без sales-проверки.",
+        "Прибыльную или минимально допустимую цену без finance-проверки.",
+        "Цену клика, CPC и рекламные ставки как price-метрики."
+      ]
+    }
+  },
+  "routing": [
+    {
+      "intent": "текущая цена, скидки и единый ценовой контекст",
+      "use_first": ["analytics_ai.v_agent_price_context_latest"],
+      "join": "готовая витрина; одна последняя строка на nm_id",
+      "output": ["seller_controlled_price", "customer_price_display", "customer_price_wallet", "customer_price_effective", "platform_discount_percent", "wallet_discount_percent", "freshness_status", "competitor_quality"]
+    },
+    {
+      "intent": "общая конкурентная ценовая позиция",
+      "use_first": ["analytics_ai.v_agent_price_context_latest", "analytics_ai.wb_price_ai_analysis"],
+      "join": "готовая latest-строка по nm_id; raw использовать только для детализации",
+      "output": ["analysis_run_date", "nm_id", "customer_price_effective", "broad_market_price_median", "strict_competitor_price_median", "strict_competitor_count", "competitor_quality", "price_status"]
+    },
+    {
+      "intent": "конкуренты по конкретному артикулу или nm_id",
+      "use_first": ["analytics_ai.wb_price_ai_competitors_raw", "analytics_ai.wb_sku_ai_analysis"],
+      "join": "source_nm_id + competitor_nm_id; дедуп по run_date + source_nm_id + competitor_nm_id",
+      "output": ["keyword", "competitor_nm_id", "бренд", "название", "цена конкурента", "разрыв", "позиция", "рейтинг", "отзывы", "photo_ai_is_competitor"]
+    },
+    {
+      "intent": "текущие цены и скидки продавца",
+      "use_first": ["pricing.wb_supplier_prices"],
+      "join": "snapshot_date + nm_id + vendor_code",
+      "output": ["snapshot_date", "nm_id", "vendor_code", "price", "discount", "discounted_price", "club_discount", "club_discounted_price"]
+    },
+    {
+      "intent": "карточка и связка nm_id -> артикул",
+      "use_first": ["analytics_ai.wb_sku_ai_analysis"],
+      "join": "nm_id; latest по snapshot_date, last_synced_at",
+      "output": ["snapshot_date", "nm_id", "vendor_code", "brand", "subject_name", "title", "discounted_price", "product_url"]
+    },
+    {
+      "intent": "финальная AI-сводка цен",
+      "use_first": ["analytics_ai.v_agent_price_context_latest", "analytics_ai.wb_price_ai_analysis"],
+      "join": "source_nm_id",
+      "output": ["слои цены сайта и отчёта", "широкий рынок", "строгие аналоги", "analysis_status", "is_price_outlier"]
+    }
+  ],
+  "tables": [
+    {
+      "name": "analytics_ai.v_agent_price_context_latest",
+      "role": "основной стабильный контракт цены для агентов",
+      "use": "текущая цена продавца, цены покупателя, скидки, свежесть, широкий рынок, строгие аналоги и quality-gated price_status",
+      "grain": "одна последняя строка на nm_id",
+      "keys": ["nm_id"],
+      "metrics": ["seller_controlled_price", "customer_price_display", "customer_price_wallet", "customer_price_effective", "broad_market_price_median", "strict_competitor_price_median", "competitor_quality", "freshness_status", "price_status"],
+      "empty_now": false
+    },
+    {
+      "name": "analytics_ai.wb_price_ai_competitors_raw",
+      "role": "основной raw-источник конкурентных цен из поисковой выдачи WB",
+      "use": "цены конкурентов, keyword, позиции, рейтинг, отзывы, price_delta, ценовой сегмент и признаки сопоставимости",
+      "grain": "run_date + source_nm_id + keyword + competitor_nm_id",
+      "dedupe_key": ["run_date", "source_nm_id", "competitor_nm_id"],
+      "keys": ["run_date", "source_nm_id", "keyword", "competitor_nm_id"],
+      "metrics": ["source_price_promo", "competitor_price_promo", "price_delta_abs", "price_delta_percent", "within_price_segment", "same_subject", "same_color", "photo_ai_is_competitor", "catalog_position_absolute", "competitor_rating", "competitor_feedbacks"],
+      "empty_now": false
+    },
+    {
+      "name": "analytics_ai.wb_sku_ai_analysis",
+      "role": "карточки и связка наших nm_id с артикулами",
+      "use": "vendor_code, supplier_article, brand, subject_name, title, product_url, текущая цена карточки",
+      "grain": "snapshot_date + nm_id + barcode/variant",
+      "keys": ["snapshot_date", "nm_id", "vendor_code"],
+      "metrics": ["price", "discounted_price", "club_discounted_price", "discount", "wb_link_price_promo", "wb_link_price_regular"],
+      "empty_now": false
+    },
+    {
+      "name": "pricing.wb_supplier_prices",
+      "role": "текущие цены и скидки продавца WB",
+      "use": "проверка price, discount, discounted_price и club_discounted_price",
+      "grain": "snapshot_date + nm_id",
+      "keys": ["snapshot_date", "nm_id", "vendor_code"],
+      "metrics": ["price", "discount", "discounted_price", "club_discount", "club_discounted_price", "is_bad_turnover"],
+      "empty_now": false
+    },
+    {
+      "name": "analytics_ai.wb_price_ai_analysis",
+      "role": "финальная AI-сводка цен",
+      "use": "итоговые слои цены, широкий рынок, строгие аналоги и статусы качества; агентам читать через v_agent_price_context_latest",
+      "grain": "run_date + source_nm_id",
+      "keys": ["run_date", "source_nm_id"],
+      "metrics": ["source_price_promo", "source_price_site_display", "source_price_site_wallet", "source_price_site_effective", "strict_competitor_count", "strict_competitor_price_median", "market_price_median", "analysis_status", "is_price_outlier"],
+      "empty_now": false
+    }
+  ],
+  "data_gaps": [
+    {
+      "metric": "sales impact of price",
+      "reason": "В price-слое нет фактической причинности цены на продажи и заказы.",
+      "impact": "Нельзя утверждать, что цена вызвала рост или падение продаж без sales-проверки."
+    },
+    {
+      "metric": "minimum profitable price",
+      "reason": "В price-слое нет полной себестоимости, комиссий и логистики.",
+      "impact": "Нельзя подтверждать минимально допустимую или прибыльную цену без finance-проверки."
+    },
+    {
+      "metric": "final competitor relevance",
+      "reason": "Raw-таблица хранит поисковую выдачу и предварительные признаки сопоставимости; финальная AI-релевантность может быть не заполнена.",
+      "impact": "Часть конкурентов нужно трактовать как кандидатов, а не идеально подтверждённые аналоги."
+    }
+  ]
+}

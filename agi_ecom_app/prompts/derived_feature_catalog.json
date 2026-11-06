@@ -1,0 +1,468 @@
+{
+  "catalog_name": "domain_derived_feature_catalog",
+  "version": "2026-04-19.v1",
+  "language": "ru",
+  "usage_rule": "Для диагностических вопросов сам выбери 3-5 релевантных признаков. Каталог — справочник идей, а не список разрешённых мыслей: после выбора метода используй готовый reader, scoped read-only SQL или уже переданный evidence/context. Верни статус гипотезы: подтверждено, частично подтверждено, не подтверждено или нет данных. Не сохраняй признаки в БД и не называй признак причиной без evidence.",
+  "domains": {
+    "sales": [
+      {
+        "name": "orders_delta_pct",
+        "hypothesis": "Спрос или верхняя часть воронки просели.",
+        "shows": "Изменение заказов между текущим и предыдущим сопоставимым периодом.",
+        "formula": "(orders_current - orders_previous) / nullif(orders_previous, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Если значение резко ниже 0, спрос или верх воронки просел, но первопричина требует проверки смежных факторов.",
+        "requires_cross_agent": ["marketing", "price", "supply"]
+      },
+      {
+        "name": "sales_delta_pct",
+        "hypothesis": "Фактическая реализация изменила выручку.",
+        "shows": "Изменение фактических продаж между периодами.",
+        "formula": "(sales_current - sales_previous) / nullif(sales_previous, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Это механический вклад реализации, а не первопричина изменения.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "revenue_delta_pct",
+        "hypothesis": "SKU дал значимый вклад в рост или падение выручки.",
+        "shows": "Изменение выручки продаж между периодами.",
+        "formula": "(revenue_current - revenue_previous) / nullif(revenue_previous, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Используй для ранжирования SKU по вкладу, не как самостоятельную причину.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "avg_price_delta_pct",
+        "hypothesis": "Изменение цены могло повлиять на заказы.",
+        "shows": "Изменение средней цены продажи.",
+        "formula": "(avg_price_current - avg_price_previous) / nullif(avg_price_previous, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Если цена выросла и заказы упали, нужен price или marketing cross-check.",
+        "requires_cross_agent": ["price", "marketing"]
+      },
+      {
+        "name": "open_to_cart_delta_pp",
+        "hypothesis": "Карточка или оффер хуже переводит открытия в корзину.",
+        "shows": "Изменение конверсии из открытия карточки в корзину.",
+        "formula": "open_to_cart_current - open_to_cart_previous",
+        "grain": "SKU + период",
+        "interpretation": "Это прокси качества карточки или оффера, а не доказанная причина.",
+        "requires_cross_agent": ["marketing", "price"]
+      },
+      {
+        "name": "cart_to_order_delta_pp",
+        "hypothesis": "Покупатель хуже доходит от корзины до заказа.",
+        "shows": "Изменение конверсии из корзины в заказ.",
+        "formula": "cart_to_order_current - cart_to_order_previous",
+        "grain": "SKU + период",
+        "interpretation": "Может указывать на цену, наличие или доверие к карточке; причину проверяй отдельно.",
+        "requires_cross_agent": ["price", "supply"]
+      },
+      {
+        "name": "cancel_rate",
+        "hypothesis": "Отмены ухудшили будущую реализацию.",
+        "shows": "Долю отмен в заказах.",
+        "formula": "cancel_units / nullif(orders_units, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Рост отмен снижает будущую реализацию, но причина отмен требует отдельной проверки.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "buyout_rate",
+        "hypothesis": "Качество заказов ухудшилось.",
+        "shows": "Долю выкупов в заказах или воронке.",
+        "formula": "buyout_units / nullif(order_count, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Низкий выкуп влияет на качество продаж, но не объясняет спрос сам по себе.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "lost_sales_candidate",
+        "hypothesis": "SKU потерял продажи в текущем периоде.",
+        "shows": "SKU продавался раньше, но не продается сейчас.",
+        "formula": "previous_sales > 0 and current_sales = 0",
+        "grain": "SKU + период",
+        "interpretation": "Кандидат на проверку остатков, цены, рекламы и карточки.",
+        "requires_cross_agent": ["supply", "price", "marketing"]
+      },
+      {
+        "name": "new_sales_candidate",
+        "hypothesis": "SKU появился в текущих продажах.",
+        "shows": "SKU не продавался раньше, но продается сейчас.",
+        "formula": "previous_sales = 0 and current_sales > 0",
+        "grain": "SKU + период",
+        "interpretation": "Кандидат на масштабирование после проверки маржи, остатков и рекламы.",
+        "requires_cross_agent": ["finance", "supply", "marketing"]
+      }
+    ],
+    "marketing": [
+      {
+        "name": "ad_spend_delta_pct",
+        "hypothesis": "Рекламная нагрузка изменилась.",
+        "shows": "Изменение рекламных затрат между периодами.",
+        "formula": "(spend_current - spend_previous) / nullif(spend_previous, 0)",
+        "grain": "кампания/SKU + период",
+        "interpretation": "Рост затрат без роста заказов указывает на риск неэффективности.",
+        "requires_cross_agent": ["sales", "finance"]
+      },
+      {
+        "name": "ad_orders_delta_pct",
+        "hypothesis": "Рекламные заказы изменились.",
+        "shows": "Изменение заказов из рекламного кабинета.",
+        "formula": "(ad_orders_current - ad_orders_previous) / nullif(ad_orders_previous, 0)",
+        "grain": "кампания/SKU + период",
+        "interpretation": "Это кабинетная атрибуция, не все продажи SKU.",
+        "requires_cross_agent": ["sales"]
+      },
+      {
+        "name": "ctr_delta_pp",
+        "hypothesis": "Кликабельность рекламы изменилась.",
+        "shows": "Изменение CTR в процентных пунктах.",
+        "formula": "ctr_current - ctr_previous",
+        "grain": "кампания/SKU + период",
+        "interpretation": "Падение может говорить о креативе, позиции или релевантности.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "cpc_delta_pct",
+        "hypothesis": "Цена клика выросла или снизилась.",
+        "shows": "Изменение CPC.",
+        "formula": "(cpc_current - cpc_previous) / nullif(cpc_previous, 0)",
+        "grain": "кампания/SKU + период",
+        "interpretation": "Рост CPC ухудшает экономику рекламы и требует финансовой проверки для решений.",
+        "requires_cross_agent": ["finance"]
+      },
+      {
+        "name": "click_to_order_delta_pp",
+        "hypothesis": "Трафик хуже конвертируется в заказ.",
+        "shows": "Изменение конверсии клика в заказ.",
+        "formula": "cr_current - cr_previous",
+        "grain": "кампания/SKU + период",
+        "interpretation": "Падение требует sales, price или card check.",
+        "requires_cross_agent": ["sales", "price"]
+      },
+      {
+        "name": "wasted_spend_flag",
+        "hypothesis": "Реклама тратит бюджет без заказов.",
+        "shows": "Наличие расхода при нулевых заказах.",
+        "formula": "ad_spend > 0 and ad_orders = 0",
+        "grain": "кампания/SKU + период",
+        "interpretation": "Готовое действие разрешай только при доказательной таблице с расходом, кликами и заказами.",
+        "requires_cross_agent": ["sales"]
+      },
+      {
+        "name": "cost_per_ad_order",
+        "hypothesis": "Рекламный заказ стал дорогим.",
+        "shows": "Стоимость рекламного заказа.",
+        "formula": "ad_spend / nullif(ad_orders, 0)",
+        "grain": "кампания/SKU + период",
+        "interpretation": "Используй как сигнал, не как CAC.",
+        "requires_cross_agent": ["finance"]
+      },
+      {
+        "name": "drr_promoted_sku",
+        "hypothesis": "Доля рекламных расходов слишком высока.",
+        "shows": "ДРР продвигаемых артикулов.",
+        "formula": "ad_spend / nullif(sales_revenue_promoted_sku, 0)",
+        "grain": "SKU/магазин + период",
+        "interpretation": "Знаменатель бери из sales, не считай только из рекламного кабинета.",
+        "requires_cross_agent": ["sales"]
+      },
+      {
+        "name": "visibility_delta_pp",
+        "hypothesis": "Поисковая видимость изменила трафик.",
+        "shows": "Изменение видимости.",
+        "formula": "visibility_current - visibility_previous",
+        "grain": "SKU/query + период",
+        "interpretation": "Объясняет трафик, но не маржу.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "high_frequency_low_order_flag",
+        "hypothesis": "Частотный запрос не дает заказы.",
+        "shows": "Высокую частотность при нулевых заказах.",
+        "formula": "frequency >= threshold and orders_count = 0",
+        "grain": "query/SKU + период",
+        "interpretation": "Кандидат на проверку релевантности, карточки или минусации.",
+        "requires_cross_agent": ["sales", "price"]
+      }
+    ],
+    "price": [
+      {
+        "name": "price_gap_pct",
+        "hypothesis": "Наша цена выше или ниже рынка.",
+        "shows": "Ценовой разрыв к медиане конкурентов.",
+        "formula": "(our_price - competitor_median_price) / nullif(competitor_median_price, 0)",
+        "grain": "SKU + run_date",
+        "interpretation": "Положительное значение означает дороже рынка; влияние на продажи требует sales-check.",
+        "requires_cross_agent": ["sales"]
+      },
+      {
+        "name": "competitor_cheaper_share",
+        "hypothesis": "Большая часть конкурентов дешевле нас.",
+        "shows": "Долю конкурентов дешевле.",
+        "formula": "competitor_cheaper_count / nullif(competitor_count, 0)",
+        "grain": "SKU + run_date",
+        "interpretation": "Высокий показатель означает ценовое давление.",
+        "requires_cross_agent": ["sales"]
+      },
+      {
+        "name": "competitor_pricier_share",
+        "hypothesis": "Есть пространство для повышения цены.",
+        "shows": "Долю конкурентов дороже нас.",
+        "formula": "competitor_pricier_count / nullif(competitor_count, 0)",
+        "grain": "SKU + run_date",
+        "interpretation": "Может давать пространство для повышения после finance/sales-check.",
+        "requires_cross_agent": ["finance", "sales"]
+      },
+      {
+        "name": "price_segment_match_share",
+        "hypothesis": "Сравнение конкурентов может быть шумным.",
+        "shows": "Долю конкурентов в том же ценовом сегменте.",
+        "formula": "same_segment_count / nullif(competitor_count, 0)",
+        "grain": "SKU + run_date",
+        "interpretation": "Низкая доля снижает надежность сравнения.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "thin_competitor_data_flag",
+        "hypothesis": "Конкурентных данных мало.",
+        "shows": "Недостаточное число конкурентов.",
+        "formula": "competitor_count < threshold",
+        "grain": "SKU + run_date",
+        "interpretation": "Снижает confidence по ценовому выводу.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "relevance_confirmed_share",
+        "hypothesis": "Конкурентный набор может быть нерелевантным.",
+        "shows": "Долю подтвержденных релевантных конкурентов.",
+        "formula": "relevant_competitor_count / nullif(competitor_count, 0)",
+        "grain": "SKU + run_date",
+        "interpretation": "Низкая доля означает, что конкуренты только кандидаты.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "promo_discount_depth",
+        "hypothesis": "Текущая цена определяется скидкой.",
+        "shows": "Глубину скидки.",
+        "formula": "(regular_price - promo_price) / nullif(regular_price, 0)",
+        "grain": "SKU + snapshot_date",
+        "interpretation": "Показывает, чем вызвана текущая цена.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "club_price_gap_pct",
+        "hypothesis": "Клубная цена меняет ценовое позиционирование.",
+        "shows": "Разрыв клубной цены к медиане конкурентов.",
+        "formula": "(club_price - competitor_median_price) / nullif(competitor_median_price, 0)",
+        "grain": "SKU + snapshot_date",
+        "interpretation": "Учитывай, если WB-клуб влияет на видимую цену.",
+        "requires_cross_agent": ["sales"]
+      },
+      {
+        "name": "price_change_since_previous_pct",
+        "hypothesis": "Изменение нашей цены совпало с изменением продаж.",
+        "shows": "Изменение нашей цены между снимками.",
+        "formula": "(price_current - price_previous) / nullif(price_previous, 0)",
+        "grain": "SKU + дата",
+        "interpretation": "Связь с продажами требует sales-check.",
+        "requires_cross_agent": ["sales"]
+      },
+      {
+        "name": "safe_discount_gap_to_margin",
+        "hypothesis": "Скидка безопасна или рискованна для маржи.",
+        "shows": "Запас до минимально безопасной цены.",
+        "formula": "(promo_price - min_profitable_price) / nullif(promo_price, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Подтверждай только после finance-check.",
+        "requires_cross_agent": ["finance"]
+      }
+    ],
+    "supply": [
+      {
+        "name": "days_of_stock",
+        "hypothesis": "Остаток ограничивает продажи.",
+        "shows": "Покрытие запасом в днях.",
+        "formula": "stock_qty / nullif(avg_daily_sales_7d, 0)",
+        "grain": "SKU + snapshot_date",
+        "interpretation": "Низкое значение означает риск доступности.",
+        "requires_cross_agent": ["sales"]
+      },
+      {
+        "name": "stockout_flag",
+        "hypothesis": "Товар был без доступного остатка.",
+        "shows": "Нулевой доступный остаток.",
+        "formula": "stock_qty = 0",
+        "grain": "SKU + snapshot_date",
+        "interpretation": "Причина падения только при спросе или продажах в нужные даты.",
+        "requires_cross_agent": ["sales", "marketing"]
+      },
+      {
+        "name": "critical_coverage_flag",
+        "hypothesis": "Покрытие критически низкое.",
+        "shows": "Критический уровень покрытия.",
+        "formula": "sales_7d_units > 0 and days_of_stock < 7",
+        "grain": "SKU + snapshot_date",
+        "interpretation": "Сильный сигнал дефицита.",
+        "requires_cross_agent": ["sales"]
+      },
+      {
+        "name": "warning_coverage_flag",
+        "hypothesis": "Покрытие в зоне предупреждения.",
+        "shows": "Предупреждение по покрытию.",
+        "formula": "sales_7d_units > 0 and days_of_stock between 7 and 21",
+        "grain": "SKU + snapshot_date",
+        "interpretation": "Нужен план пополнения.",
+        "requires_cross_agent": ["sales"]
+      },
+      {
+        "name": "reorder_qty_recommended",
+        "hypothesis": "Нужен дозаказ.",
+        "shows": "Рекомендуемое количество дозаказа.",
+        "formula": "greatest(ceil(avg_daily_sales_7d * target_days - stock_qty), 0)",
+        "grain": "SKU + snapshot_date",
+        "interpretation": "Target days фиксируй в ответе.",
+        "requires_cross_agent": ["sales", "finance"]
+      },
+      {
+        "name": "zero_sales_with_stock_flag",
+        "hypothesis": "Остаток есть, но спроса или продаж нет.",
+        "shows": "Наличие остатка без продаж.",
+        "formula": "stock_qty > 0 and sales_14d_units = 0",
+        "grain": "SKU + snapshot_date",
+        "interpretation": "Проверяй спрос, цену, карточку или рекламу.",
+        "requires_cross_agent": ["sales", "marketing", "price"]
+      },
+      {
+        "name": "overstock_flag",
+        "hypothesis": "Есть потенциальный избыток.",
+        "shows": "Большой остаток без продаж.",
+        "formula": "stock_qty >= threshold and sales_7d_units = 0",
+        "grain": "SKU + snapshot_date",
+        "interpretation": "Распродажу разрешай только после price/finance-check.",
+        "requires_cross_agent": ["price", "finance"]
+      },
+      {
+        "name": "stock_concentration_share",
+        "hypothesis": "Запас сконцентрирован на одном складе.",
+        "shows": "Долю остатка на крупнейшем складе.",
+        "formula": "top_warehouse_stock_qty / nullif(stock_qty, 0)",
+        "grain": "SKU + snapshot_date",
+        "interpretation": "Высокий показатель может ограничивать региональную доступность.",
+        "requires_cross_agent": ["sales"]
+      },
+      {
+        "name": "in_way_pressure",
+        "hypothesis": "Полный остаток завышает доступность.",
+        "shows": "Долю товара в пути.",
+        "formula": "(in_way_to_client + in_way_from_client) / nullif(stock_qty_full, 0)",
+        "grain": "SKU + snapshot_date",
+        "interpretation": "Не завышай доступность полным остатком.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "inbound_readiness_rate",
+        "hypothesis": "Поставка еще не закрывает дефицит.",
+        "shows": "Готовность поставки к продаже.",
+        "formula": "ready_for_sale_quantity / nullif(quantity, 0)",
+        "grain": "поставка/SKU + snapshot_date",
+        "interpretation": "Низкая готовность еще не закрывает дефицит.",
+        "requires_cross_agent": []
+      }
+    ],
+    "finance": [
+      {
+        "name": "net_revenue",
+        "hypothesis": "Финансовая база изменилась после возвратов.",
+        "shows": "Выручку после возвратов.",
+        "formula": "gross_revenue - returns",
+        "grain": "SKU + период",
+        "interpretation": "База для маржи и долей расходов.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "marketplace_cost_share",
+        "hypothesis": "Расходы маркетплейса съели экономику.",
+        "shows": "Долю расходов МП в нетто-выручке.",
+        "formula": "marketplace_costs_total / nullif(net_revenue, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Рост доли расходов ухудшает экономику.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "commission_share",
+        "hypothesis": "Комиссия и эквайринг давят на маржу.",
+        "shows": "Долю комиссии и эквайринга.",
+        "formula": "(commission + acquiring) / nullif(net_revenue, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Показывает давление платформенных расходов.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "logistics_share",
+        "hypothesis": "Логистика ухудшила экономику.",
+        "shows": "Долю логистики.",
+        "formula": "logistics / nullif(net_revenue, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Полезно для тяжелых или дорогих в доставке товаров.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "storage_share",
+        "hypothesis": "Хранение усилило финансовый риск.",
+        "shows": "Долю хранения.",
+        "formula": "storage / nullif(net_revenue, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Рост может усиливать риск overstock.",
+        "requires_cross_agent": ["supply"]
+      },
+      {
+        "name": "cogs_coverage_rate",
+        "hypothesis": "Себестоимость покрывает не все строки.",
+        "shows": "Покрытие строк себестоимостью.",
+        "formula": "costed_qty / nullif(total_sale_return_qty, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Если меньше 1, чистую маржу не подтверждай полностью.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "gross_margin_pct",
+        "hypothesis": "Валовая маржа изменилась после COGS.",
+        "shows": "Валовую маржу после себестоимости.",
+        "formula": "(net_revenue - cogs_total) / nullif(net_revenue, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Требует полного COGS.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "contribution_margin_pct",
+        "hypothesis": "Маржа после COGS и расходов МП недостаточна.",
+        "shows": "Contribution margin после себестоимости и расходов МП.",
+        "formula": "(net_revenue - cogs_total - marketplace_costs_total) / nullif(net_revenue, 0)",
+        "grain": "SKU + период",
+        "interpretation": "Главный финансовый признак при полном COGS.",
+        "requires_cross_agent": []
+      },
+      {
+        "name": "margin_delta_abs",
+        "hypothesis": "SKU механически изменил прибыль.",
+        "shows": "Изменение маржи между периодами.",
+        "formula": "margin_current - margin_previous",
+        "grain": "SKU + период",
+        "interpretation": "Показывает механический вклад SKU в прибыль.",
+        "requires_cross_agent": ["sales"]
+      },
+      {
+        "name": "safe_price_floor",
+        "hypothesis": "Есть минимальная цена до нулевой contribution margin.",
+        "shows": "Сценарный нижний порог цены.",
+        "formula": "(cogs_per_unit + marketplace_cost_per_unit) / nullif(1 - variable_rate, 0)",
+        "grain": "SKU + сценарий",
+        "interpretation": "Это сценарий с явными допущениями и price-check.",
+        "requires_cross_agent": ["price"]
+      }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "run_id": 160,
+  "case": "stale_or_future_source",
+  "hazard": "A current action uses stale evidence or a source date in the future.",
+  "expected_status": "blocked",
+  "expected_code": "future_evidence",
+  "test_reference": "tests/test_manager_decision.py::test_stale_evidence_rejects_action_and_future_evidence_blocks_decision"
+}

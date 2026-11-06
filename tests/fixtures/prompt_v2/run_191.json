@@ -1,0 +1,54 @@
+{
+  "run_id": 191,
+  "user_query": "Покажи ключевые изменения по продажам",
+  "expected_query_mode": "report",
+  "primary_domain": "sales",
+  "evidence_package": {
+    "confirmed_facts": [
+      {
+        "metric": "sales_units_change_pct",
+        "value": -7.0,
+        "unit": "%",
+        "period": "last_7d_vs_previous_7d",
+        "status": "confirmed",
+        "evidence_ref": "run191:sales:units"
+      },
+      {
+        "metric": "revenue_change_pct",
+        "value": -3.7,
+        "unit": "%",
+        "period": "last_7d_vs_previous_7d",
+        "status": "confirmed",
+        "evidence_ref": "run191:sales:revenue"
+      }
+    ],
+    "sku_evidence_matrix": [
+      {
+        "sku": "46224",
+        "domains": {
+          "supply": {
+            "status": "no_data",
+            "reason": "sku_not_in_source"
+          }
+        }
+      }
+    ]
+  },
+  "hazardous_draft": "За последние 7 дней продажи снизились на 3,7%. По SKU 46224 остаток — 0 шт.",
+  "corrected_draft": "За последние 7 дней продажи в штуках снизились на 7,0%, а выручка — на 3,7%. По SKU 46224 остаток не подтвержден источником.",
+  "expected_violation_codes": [
+    "sales_units_pct_revenue_pct_label_swap",
+    "no_data_metric_stated_as_zero"
+  ],
+  "acceptance_hazards": [
+    "sales_units_pct_is_not_revenue_pct",
+    "missing_sku_row_is_not_zero"
+  ],
+  "required_corrected_fragments": [
+    "продажи в штуках снизились на 7,0%",
+    "остаток не подтвержден"
+  ],
+  "forbidden_corrected_fragments": [
+    "остаток — 0"
+  ]
+}

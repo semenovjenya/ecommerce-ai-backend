@@ -1,0 +1,8 @@
+{
+  "run_id": 149,
+  "case": "incomplete_target_coverage",
+  "hazard": "A requested SKU is absent from the candidate portfolio.",
+  "expected_status": "needs_data",
+  "expected_code": "incomplete_target_coverage",
+  "test_reference": "tests/test_manager_decision.py::test_explicit_sku_coverage_fails_closed"
+}

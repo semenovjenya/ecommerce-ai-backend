@@ -1,0 +1,7 @@
+{
+  "run_id": 196,
+  "case": "inventory_value_on_hand_times_cost",
+  "hazard": "Current inventory value uses sold units or full stock instead of sellable on-hand.",
+  "expected_formula": "stock_qty * unit_cost_rub",
+  "test_reference": "tests/test_strategic_db_service.py::test_current_inventory_value_uses_sellable_on_hand_times_unit_cost"
+}

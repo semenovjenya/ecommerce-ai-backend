@@ -1,0 +1,377 @@
+{
+  "catalog_name": "marketing_agent_table_guide",
+  "version": "2026-04-06.compact",
+  "language": "ru",
+  "database": {
+    "schema": "marketing",
+    "note": "Не хранить в этом файле пароли, DSN и API-ключи."
+  },
+  "purpose": "Короткая инструкция для маркетингового агента: по вопросу пользователя выбрать правильные таблицы WB-маркетинга, объяснить выбор, проверить пробелы в данных и выдать аналитический ответ.",
+  "agent_actions": {
+    "workflow": [
+      "Определи намерение пользователя: кампании, артикулы в кампаниях, бюджет, фактические списания, поисковые запросы, видимость, WB-акции или отладка выгрузки.",
+      "Выбери 1-3 основные таблицы из routing. Не начинай с сырых API JSON, если есть нормализованная таблица.",
+      "Определи период: если пользователь не указал даты, бери последний доступный полный период из date_range выбранных таблиц.",
+      "Проверь data_gaps и поле empty_now. Если таблица пустая, не делай выводы по ней и явно напиши 'пробел в данных'.",
+      "Сформируй SQL/запрос только по нужным таблицам, с агрегацией на уровне grain.",
+      "Выдай короткий ответ по-русски: таблица с фактами, затем 3-6 выводов и операционные рекомендации.",
+      "Разделяй выводы и рекомендации: в выводах пиши только диагностический факт и влияние, действия выноси только в рекомендации.",
+      "Если вопрос про прибыльность, ROMI, CAC, инкрементальность или маржинальность, сформируй служебный cross_agent_requests к finance/sales; не пиши пользователю 'передать в профильный агент'."
+    ],
+    "output_contract": {
+      "agent_should_return": [
+        "Какие таблицы выбраны и почему.",
+        "Какой период использован.",
+        "Какие ключи/связи использованы для join.",
+        "Таблицу результата: кампания/артикул/SKU/запрос, показы, клики, заказы, затраты, позиция или видимость - только если эти поля есть в источнике; nm_id оставлять только для внутренних join.",
+        "3-6 коротких выводов.",
+        "1-5 рекомендаций с действиями: проверить, оставить под контролем, условно масштабировать/сократить/остановить только при наличии расходов, цены клика, заказов и ДРР.",
+        "Пробелы в данных, если нужная таблица пустая или нужной метрики нет."
+      ],
+      "agent_should_not_return": [
+        "Секреты, DSN, пароли, API-ключи.",
+        "Сырой JSON из api_response/response_payload без явной просьбы пользователя.",
+        "Выводы по пустым normquery-таблицам.",
+        "CAC, ROMI, MER, прибыльность или инкрементальность как факт, если не подключены финансовые/заказные таблицы."
+      ]
+    }
+  },
+  "routing": [
+    {
+      "intent": "общая эффективность рекламных кампаний",
+      "use_first": ["marketing.wb_marketing_campaign_stats_daily", "marketing.wb_marketing_campaigns"],
+      "join": "wb_marketing_campaign_stats_daily.advert_id = wb_marketing_campaigns.external_id",
+      "output": ["кампания", "статус", "показы", "клики", "заказы", "затраты", "CTR", "CPC", "CR", "классификация действия"]
+    },
+    {
+      "intent": "эффективность артикулов внутри кампаний",
+      "use_first": ["marketing.wb_marketing_campaign_stats_daily_nms", "marketing.wb_marketing_campaign_nms", "marketing.wb_marketing_campaigns"],
+      "join": "advert_id + nm_id; campaigns.external_id = advert_id",
+      "output": ["кампания", "nm_id", "название nm", "категория", "ставка", "показы", "клики", "заказы", "затраты"]
+    },
+    {
+      "intent": "бюджет кампаний и общий баланс кабинета",
+      "use_first": ["marketing.wb_marketing_budget", "marketing.wb_marketing_balance"],
+      "join": "budget.advert_id можно связать с campaigns.external_id",
+      "output": ["advert_id", "budget.total", "budget.cash", "budget.netting", "balance", "net", "bonus"]
+    },
+    {
+      "intent": "фактические списания/документы затрат",
+      "use_first": ["marketing.wb_marketing_upd"],
+      "join": "upd.advert_id можно связать с campaigns.external_id",
+      "output": ["period_from", "period_to", "advert_id", "camp_name", "upd_sum", "payment_type", "advert_status"]
+    },
+    {
+      "intent": "поисковые запросы, которые дают заказы",
+      "use_first": ["marketing.wb_search_query_orders_text_daily", "marketing.wb_search_query_texts", "marketing.wb_search_query_details"],
+      "join": "nm_id; при необходимости request_key/snapshot_hour/period",
+      "output": ["text", "nm_id", "frequency", "avg_position", "orders_count", "товар", "категория", "бренд"]
+    },
+    {
+      "intent": "видимость, позиция и прокси качества карточки",
+      "use_first": ["marketing.wb_search_query_details", "marketing.wb_search_query_report_overview"],
+      "join": "details.nm_id; overview только для общего уровня",
+      "output": ["nm_id", "name", "avg_position_current", "visibility_current", "open_card_current", "add_to_cart_current", "orders_current", "cart_to_order_current"]
+    },
+    {
+      "intent": "сводка поискового отчета по категориям/брендам/тегам",
+      "use_first": ["marketing.wb_search_query_report_groups", "marketing.wb_search_query_groups"],
+      "join": "request_key + row_index",
+      "output": ["subject_name", "brand_name", "tag_name", "metric_avg_position_current", "metric_visibility_current", "metric_orders_current"]
+    },
+    {
+      "intent": "ставки и normquery-кластеры",
+      "use_first": ["marketing.wb_marketing_normquery_bids", "marketing.wb_marketing_normquery_clusters", "marketing.wb_marketing_normquery_minus", "marketing.wb_marketing_normquery_stats_daily"],
+      "join": "advert_id + nm_id + norm_query",
+      "output": ["только пробел в данных, пока эти таблицы пустые"],
+      "warning": "В текущей БД все normquery-таблицы пустые."
+    },
+    {
+      "intent": "WB-акции и промо-календарь",
+      "use_first": ["marketing.wb_calendar_promotions", "marketing.wb_calendar_promotions_details", "marketing.wb_calendar_promotions_nomenclatures"],
+      "join": "promotion_id + snapshot_date",
+      "output": ["promotion_id", "name", "start_date_time", "end_date_time", "participation_percentage", "in_promo_action_total", "пробел по nm_id, если nomenclatures пустая"]
+    },
+    {
+      "intent": "отладка выгрузки/search API",
+      "use_first": ["marketing.wb_search_query_api_requests"],
+      "join": "request_key",
+      "output": ["method_name", "endpoint", "period", "nm_id", "наличие request_payload/response_payload"],
+      "warning": "Не использовать как основной источник аналитики."
+    }
+  ],
+  "tables": [
+    {
+      "name": "marketing.wb_marketing_campaigns",
+      "role": "справочник кампаний",
+      "use": "название, статус, тип, оплата, бренд, настройки кампании",
+      "grain": "campaign_type + external_id + snapshot_date",
+      "keys": ["snapshot_date", "campaign_type", "external_id"],
+      "joins": ["external_id -> advert_id"],
+      "rows": 828,
+      "date_range": "2026-04-01..2026-04-06",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_marketing_campaign_stats_daily",
+      "role": "дневная эффективность кампаний",
+      "use": "показы, клики, заказы, затраты, CTR, CPC, CR по кампании",
+      "grain": "advert_id + stat_date",
+      "keys": ["stat_date", "advert_id"],
+      "metrics": ["views", "clicks", "ctr", "cpc", "orders", "shks", "sum_spend", "atbs", "canceled", "cr"],
+      "joins": ["advert_id -> campaigns.external_id"],
+      "rows": 682,
+      "date_range": "2026-03-01..2026-04-06",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_marketing_campaign_nms",
+      "role": "состав кампаний по артикулам",
+      "use": "какие nm_id находятся в кампании, категория и ставки в копейках",
+      "grain": "advert_id + nm_id + snapshot_date",
+      "keys": ["snapshot_date", "advert_id", "nm_id"],
+      "metrics": ["bid_search_kopecks", "bid_recommendations_kopecks"],
+      "joins": ["advert_id", "nm_id"],
+      "rows": 1344,
+      "date_range": "2026-04-01..2026-04-06",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_marketing_campaign_stats_daily_nms",
+      "role": "дневная эффективность кампаний по артикулам",
+      "use": "показы, клики, заказы и затраты по nm_id внутри кампании",
+      "grain": "advert_id + nm_id + stat_date",
+      "keys": ["stat_date", "advert_id", "nm_id"],
+      "metrics": ["views", "clicks", "ctr", "cpc", "orders", "shks", "sum_spend", "atbs", "canceled", "cr"],
+      "joins": ["advert_id", "nm_id"],
+      "rows": 1288,
+      "date_range": "2026-03-01..2026-04-06",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_marketing_budget",
+      "role": "бюджет кампаний",
+      "use": "cash, netting, total по advert_id",
+      "grain": "advert_id + snapshot_date",
+      "keys": ["snapshot_date", "advert_id"],
+      "metrics": ["cash", "netting", "total"],
+      "joins": ["advert_id -> campaigns.external_id"],
+      "rows": 1200,
+      "date_range": "2026-04-01..2026-04-06",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_marketing_balance",
+      "role": "общий баланс кабинета продвижения",
+      "use": "balance, net, bonus на дату",
+      "grain": "snapshot_date",
+      "keys": ["snapshot_date"],
+      "metrics": ["balance", "net", "bonus"],
+      "rows": 6,
+      "date_range": "2026-04-01..2026-04-06",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_marketing_upd",
+      "role": "фактические списания/затраты по документам WB",
+      "use": "сверка расходов за период, upd_sum",
+      "grain": "advert_id + period_from + period_to + запись списания",
+      "keys": ["period_from", "period_to", "advert_id"],
+      "metrics": ["upd_sum"],
+      "joins": ["advert_id -> campaigns.external_id"],
+      "rows": 2271,
+      "date_range": "2026-03-01..2026-04-06",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_marketing_normquery_clusters",
+      "role": "normquery-кластеры кампаний",
+      "use": "активные/исключенные norm_query по advert_id и nm_id",
+      "grain": "advert_id + nm_id + norm_query + is_active + snapshot_date",
+      "keys": ["snapshot_date", "advert_id", "nm_id", "is_active", "norm_query"],
+      "rows": 0,
+      "date_range": null,
+      "empty_now": true
+    },
+    {
+      "name": "marketing.wb_marketing_normquery_bids",
+      "role": "ставки normquery в копейках",
+      "use": "bid по advert_id, nm_id и norm_query",
+      "grain": "advert_id + nm_id + norm_query + snapshot_date",
+      "keys": ["snapshot_date", "advert_id", "nm_id", "norm_query"],
+      "metrics": ["bid"],
+      "rows": 0,
+      "date_range": null,
+      "empty_now": true
+    },
+    {
+      "name": "marketing.wb_marketing_normquery_minus",
+      "role": "минус-фразы normquery",
+      "use": "исключенные norm_query",
+      "grain": "advert_id + nm_id + norm_query + snapshot_date",
+      "keys": ["snapshot_date", "advert_id", "nm_id", "norm_query"],
+      "rows": 0,
+      "date_range": null,
+      "empty_now": true
+    },
+    {
+      "name": "marketing.wb_marketing_normquery_stats",
+      "role": "статистика normquery за период",
+      "use": "агрегат по views/clicks/orders/avg_pos за период",
+      "grain": "period_from + period_to + advert_id + nm_id + norm_query",
+      "keys": ["period_from", "period_to", "advert_id", "nm_id", "norm_query"],
+      "metrics": ["views", "clicks", "ctr", "cpc", "cpm", "orders", "atbs", "avg_pos"],
+      "rows": 0,
+      "date_range": null,
+      "empty_now": true
+    },
+    {
+      "name": "marketing.wb_marketing_normquery_stats_daily",
+      "role": "дневная статистика normquery",
+      "use": "дневные views/clicks/orders/spend/avg_pos по norm_query",
+      "grain": "stat_date + advert_id + nm_id + norm_query",
+      "keys": ["stat_date", "advert_id", "nm_id", "norm_query"],
+      "metrics": ["views", "clicks", "ctr", "cpc", "cpm", "orders", "shks", "atbs", "avg_pos", "spend"],
+      "rows": 0,
+      "date_range": null,
+      "empty_now": true
+    },
+    {
+      "name": "marketing.wb_search_query_api_requests",
+      "role": "аудит API-запросов поиска",
+      "use": "отладка request_payload/response_payload и методов выгрузки",
+      "grain": "request_key",
+      "keys": ["request_key"],
+      "rows": 236,
+      "date_range": "2026-03-25..2026-04-05",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_search_query_report_overview",
+      "role": "обзор поискового отчета",
+      "use": "общие позиции, видимость, переходы в карточку, рейтинг продавца",
+      "grain": "request_key + период",
+      "keys": ["request_key"],
+      "metrics": ["total_products", "supplier_rating_current", "advertised_products_current", "position_average_current", "position_median_current", "visibility_current", "open_card_current"],
+      "rows": 6,
+      "date_range": "2026-03-25..2026-04-05",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_search_query_report_groups",
+      "role": "группы поискового отчета",
+      "use": "метрики по subject/brand/tag",
+      "grain": "request_key + row_index",
+      "keys": ["request_key", "row_index"],
+      "metrics": ["metric_avg_position_current", "metric_visibility_current", "metric_orders_current"],
+      "rows": 6,
+      "date_range": "2026-03-25..2026-04-05",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_search_query_groups",
+      "role": "альтернативные группы поискового отчета",
+      "use": "совместимый источник групп subject/brand/tag",
+      "grain": "request_key + row_index",
+      "keys": ["request_key", "row_index"],
+      "metrics": ["metric_avg_position_current", "metric_visibility_current", "metric_orders_current"],
+      "rows": 6,
+      "date_range": "2026-03-25..2026-04-05",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_search_query_details",
+      "role": "поиск по артикулу",
+      "use": "позиция, видимость, переходы, корзина, заказы, рейтинг и цены по nm_id",
+      "grain": "request_key + nm_id",
+      "keys": ["request_key", "nm_id"],
+      "metrics": ["avg_position_current", "visibility_current", "open_card_current", "add_to_cart_current", "orders_current", "cart_to_order_current"],
+      "rows": 130,
+      "date_range": "2026-03-25..2026-04-05",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_search_query_texts",
+      "role": "поисковые тексты за период",
+      "use": "частотность, позиция, видимость и воронка по text + nm_id",
+      "grain": "snapshot_hour + период + nm_id + text + top_order_by",
+      "keys": ["snapshot_hour", "current_period_start", "current_period_end", "nm_id", "text", "top_order_by"],
+      "metrics": ["frequency_current", "week_frequency", "avg_position_current", "open_card_current", "add_to_cart_current", "orders_current", "visibility_current"],
+      "rows": 7980,
+      "date_range": "2026-03-25..2026-04-05",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_search_query_orders_text_daily",
+      "role": "дневные заказы по поисковому тексту",
+      "use": "какие text дают orders_count по дням",
+      "grain": "snapshot_hour + период + nm_id + text + dt",
+      "keys": ["snapshot_hour", "current_period_start", "current_period_end", "nm_id", "text", "dt"],
+      "metrics": ["frequency", "avg_position", "orders_count"],
+      "rows": 23443,
+      "date_range": "2026-03-25..2026-04-05",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_search_query_orders_total_daily",
+      "role": "дневные поисковые заказы по артикулу",
+      "use": "orders_count и avg_position по nm_id без text",
+      "grain": "snapshot_hour + период + nm_id + dt",
+      "keys": ["snapshot_hour", "current_period_start", "current_period_end", "nm_id", "dt"],
+      "metrics": ["avg_position", "orders_count"],
+      "rows": 763,
+      "date_range": "2026-03-25..2026-04-05",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_calendar_promotions",
+      "role": "календарь WB-акций",
+      "use": "название, тип, start/end акции",
+      "grain": "promotion_id + snapshot_date",
+      "keys": ["promotion_id", "snapshot_date"],
+      "rows": 36,
+      "date_range": "2026-04-01..2026-04-06",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_calendar_promotions_details",
+      "role": "детали WB-акций",
+      "use": "описание, остатки, участие, ranging/details_json",
+      "grain": "promotion_id + snapshot_date",
+      "keys": ["snapshot_date", "promotion_id"],
+      "metrics": ["in_promo_action_total", "not_in_promo_action_total", "participation_percentage", "exception_products_count"],
+      "rows": 36,
+      "date_range": "2026-04-01..2026-04-06",
+      "empty_now": false
+    },
+    {
+      "name": "marketing.wb_calendar_promotions_nomenclatures",
+      "role": "артикулы в WB-акциях",
+      "use": "nm_id, in_action, price, plan_price, discount, plan_discount",
+      "grain": "snapshot_date + promotion_id + nm_id",
+      "keys": ["snapshot_date", "promotion_id", "nm_id"],
+      "metrics": ["price", "plan_price", "discount", "plan_discount"],
+      "rows": 0,
+      "date_range": null,
+      "empty_now": true
+    },
+    {
+      "name": "marketing.wb_calendar_promotions_progress",
+      "role": "служебный прогресс загрузки акций",
+      "use": "только отладка DAG/парсера",
+      "grain": "checkpoint загрузки",
+      "keys": ["id"],
+      "rows": 6,
+      "date_range": "2027-03-31..2027-04-05",
+      "empty_now": false,
+      "technical_table": true
+    }
+  ],
+  "data_gaps": [
+    "Все marketing.wb_marketing_normquery_* таблицы сейчас пустые: не делать выводы по normquery-ставкам и кластерам.",
+    "marketing.wb_calendar_promotions_nomenclatures сейчас пустая: нет артикульной детализации WB-акций.",
+    "Затраты есть в wb_marketing_campaign_stats_daily.sum_spend и wb_marketing_upd.upd_sum, но это не прибыльность и не ROMI.",
+    "В поисковых таблицах wb_search_query_* нет рекламных затрат spend; не считать CPC/ROMI по ним.",
+    "Сырые api_response/response_payload использовать только для отладки."
+  ]
+}

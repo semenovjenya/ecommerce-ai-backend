@@ -1,0 +1,8 @@
+{
+  "run_id": 162,
+  "case": "sellable_stock_not_full_stock",
+  "hazard": "Full stock and customer transit are incorrectly treated as sellable on-hand.",
+  "expected_field": "stock_qty",
+  "forbidden_field": "stock_qty_full",
+  "test_reference": "tests/test_action_execution.py::test_handler_uses_sellable_stock_and_never_treats_customer_transit_as_supplier_inbound"
+}

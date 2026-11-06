@@ -1,0 +1,8 @@
+{
+  "run_id": 197,
+  "case": "conflicting_actions_same_target",
+  "hazard": "Opposite actions are published for one target.",
+  "expected_status": "blocked",
+  "expected_code": "conflicting_target_actions",
+  "test_reference": "tests/test_manager_decision.py::test_period_mismatch_and_same_target_conflict_are_detected"
+}

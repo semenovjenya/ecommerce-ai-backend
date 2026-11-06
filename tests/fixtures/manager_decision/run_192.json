@@ -1,0 +1,8 @@
+{
+  "run_id": 192,
+  "case": "customer_transit_not_supplier_inbound",
+  "hazard": "in_way_to_client or in_way_from_client is counted as supplier inbound.",
+  "expected_field": "supplier_inbound_qty",
+  "forbidden_inbound_fields": ["in_way_to_client", "in_way_from_client"],
+  "test_reference": "tests/test_action_execution.py::test_handler_uses_sellable_stock_and_never_treats_customer_transit_as_supplier_inbound"
+}

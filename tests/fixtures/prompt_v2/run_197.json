@@ -1,0 +1,41 @@
+{
+  "run_id": 197,
+  "user_query": "Сформируй отчет по остаткам",
+  "expected_query_mode": "report",
+  "primary_domain": "supply",
+  "evidence_package": {
+    "confirmed_facts": [
+      {
+        "metric": "stock_qty",
+        "value": 210,
+        "unit": "units",
+        "period": "as_of_2026-06-25",
+        "sku": "46224",
+        "status": "confirmed",
+        "evidence_ref": "run197:supply:overview"
+      }
+    ],
+    "safety_statuses": [
+      {
+        "sku": "46224",
+        "action_family": "reorder",
+        "status": "needs_review"
+      }
+    ]
+  },
+  "hazardous_draft": "- SKU 46224: приостановить дозаказ.\n- SKU 46224: поддерживать регулярное пополнение.",
+  "corrected_draft": "SKU 46224: сохранить текущий уровень пополнения до следующей проверки скорости продаж; не увеличивать дозаказ без нового расчета покрытия.",
+  "expected_violation_codes": [
+    "contradictory_sku_actions"
+  ],
+  "acceptance_hazards": [
+    "same_sku_cannot_have_stop_and_maintain_reorder_actions"
+  ],
+  "required_corrected_fragments": [
+    "SKU 46224",
+    "до следующей проверки"
+  ],
+  "forbidden_corrected_fragments": [
+    "приостановить дозаказ"
+  ]
+}

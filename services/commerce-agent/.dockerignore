@@ -1,0 +1,11 @@
+*
+!.dockerignore
+!README.md
+!langgraph.json
+!pyproject.toml
+!uv.lock
+!src/
+!src/**
+src/**/*.egg-info/
+src/**/__pycache__/
+src/**/*.py[cod]

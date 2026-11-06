@@ -1,0 +1,188 @@
+{
+  "catalog_name": "sales_agent_table_guide",
+  "version": "2026-04-06.compact",
+  "language": "ru",
+  "database": {
+    "schema": "sales",
+    "note": "Не хранить в этом файле пароли, DSN и API-ключи."
+  },
+  "purpose": "Короткая инструкция для агента продаж: по вопросу пользователя выбрать правильные таблицы WB-продаж, объяснить выбор, проверить пробелы в данных и выдать аналитический ответ по продажам, заказам и воронке.",
+  "agent_actions": {
+    "workflow": [
+      "Определи намерение пользователя: продажи, заказы, выручка продаж, динамика по дням, SKU/артикулы, регионы/склады, отмены, воронка карточки или отладка выгрузки.",
+      "Выбери 1-3 основные таблицы из routing. Не начинай с progress-таблиц и сырого API JSON, если есть нормализованная таблица.",
+      "Определи период: если пользователь не указал даты, бери последний доступный полный период из date_range выбранных таблиц.",
+      "Проверь data_gaps и поле empty_now. Если таблица пустая, не делай выводы по ней и явно напиши 'пробел в данных'.",
+      "Сформируй SQL/запрос только по нужным таблицам, с агрегацией на уровне grain.",
+      "Выдай короткий ответ по-русски: таблица с фактами, затем 3-6 выводов и операционные рекомендации.",
+      "Разделяй выводы и рекомендации: в выводах пиши только диагностический факт и влияние, действия выноси только в рекомендации.",
+      "Если вопрос про прибыльность, комиссии, логистику, хранение, штрафы, выплаты, ROMI или маржинальность, сформируй служебный cross_agent_requests к finance; не пиши пользователю 'передать в Finance Agent'."
+    ],
+    "output_contract": {
+      "agent_should_return": [
+        "Какие таблицы выбраны и почему.",
+        "Какой период использован.",
+        "Какие ключи/связи использованы для join.",
+        "Таблицу результата: дата, артикул, бренд, предмет, продажи, заказы, выручка продаж, цена, открытия карточки, корзины, выкупы или отмены - только если эти поля есть в источнике.",
+        "3-6 коротких выводов.",
+        "1-5 рекомендаций с действиями: усилить, удержать, проверить, исправить; смежные проверки оформлять только через cross_agent_requests.",
+        "Пробелы в данных, если нужная таблица пустая или нужной метрики нет."
+      ],
+      "agent_should_not_return": [
+        "Секреты, DSN, пароли, API-ключи.",
+        "Сырой JSON из api_response без явной просьбы пользователя.",
+        "Выводы по пустым funnel/progress-таблицам.",
+        "CAC, ROMI, MER, прибыльность, contribution after COGS или cash-flow как факт.",
+        "Финансовые комиссии, логистику, хранение, штрафы и выплаты как вывод из sales-слоя."
+      ]
+    }
+  },
+  "routing": [
+    {
+      "intent": "фактические продажи и выручка продаж",
+      "use_first": ["sales.wb_supplier_sales"],
+      "join": "nm_id, supplier_article, date_ord::date; при необходимости srid/g_number/sticker для трассировки строки",
+      "output": ["дата продажи", "nm_id", "артикул поставщика", "бренд", "предмет", "количество продаж", "for_pay", "price_with_disc", "warehouse_name", "region_name"]
+    },
+    {
+      "intent": "заказы и отмены до продажи",
+      "use_first": ["sales.wb_supplier_orders"],
+      "join": "nm_id, supplier_article, date_ord::date; для сопоставления с продажами осторожно использовать srid/g_number/sticker, если они заполнены",
+      "output": ["дата заказа", "nm_id", "артикул поставщика", "бренд", "предмет", "количество заказов", "is_cancel", "cancel_date", "price_with_disc", "warehouse_name", "region_name"]
+    },
+    {
+      "intent": "воронка карточки по дням",
+      "use_first": ["sales.wb_sales_funnel_products_daily"],
+      "join": "report_date + nm_id + vendor_code",
+      "output": ["report_date", "nm_id", "vendor_code", "brand_name", "subject_name", "open_count", "cart_count", "order_count", "order_sum", "buyout_count", "buyout_sum", "cancel_count", "add_to_cart_conversion", "cart_to_order_conversion", "buyout_percent"]
+    },
+    {
+      "intent": "недельная воронка карточки",
+      "use_first": ["sales.wb_sales_funnel_products_weekly"],
+      "join": "report_week_start + nm_id + vendor_code",
+      "output": ["только пробел в данных, пока таблица пустая"],
+      "warning": "В текущей БД таблица пустая."
+    },
+    {
+      "intent": "снимок воронки за выбранный период",
+      "use_first": ["sales.wb_sales_funnel_products", "sales.wb_sales_funnel_products_daily"],
+      "join": "snapshot_date + period_start + period_end + nm_id",
+      "output": ["только пробел в данных по wb_sales_funnel_products, если таблица пустая; для дневной аналитики используй wb_sales_funnel_products_daily"],
+      "warning": "В текущей БД sales.wb_sales_funnel_products пустая."
+    },
+    {
+      "intent": "отладка инкрементальной выгрузки заказов/продаж",
+      "use_first": ["sales.wb_supplier_orders_progress", "sales.wb_supplier_sales_progress", "sales.wb_sales_funnel_progress"],
+      "join": "не использовать для бизнес-аналитики; это технические таблицы прогресса загрузки",
+      "output": ["last_change_date_from", "updated_at", "snapshot_date", "period_start", "period_end"],
+      "warning": "Использовать только для проверки свежести/статуса выгрузки."
+    }
+  ],
+  "tables": [
+    {
+      "name": "sales.wb_supplier_sales",
+      "role": "фактические продажи WB",
+      "use": "продажи, выручка продаж, цена, скидки, склад и регион по факту реализации",
+      "grain": "строка продажи/реализации",
+      "keys": ["date_ord", "nm_id", "supplier_article", "srid", "g_number", "sticker"],
+      "metrics": ["is_realization", "for_pay", "total_price", "discount_percent", "spp", "payment_sale_amount", "finished_price", "price_with_disc"],
+      "rows": 4321,
+      "date_range": "2025-12-29..2026-04-05",
+      "empty_now": false
+    },
+    {
+      "name": "sales.wb_supplier_orders",
+      "role": "заказы WB до факта продажи",
+      "use": "заказы, отмены, цена заказа, склад и регион; полезно для ранней динамики до реализации",
+      "grain": "строка заказа",
+      "keys": ["date_ord", "nm_id", "supplier_article", "srid", "g_number", "sticker"],
+      "metrics": ["is_cancel", "cancel_date", "is_realization", "total_price", "discount_percent", "spp", "finished_price", "price_with_disc"],
+      "rows": 4843,
+      "date_range": "2025-11-18..2026-04-05",
+      "empty_now": false
+    },
+    {
+      "name": "sales.wb_sales_funnel_products_daily",
+      "role": "дневная воронка карточки по товарам",
+      "use": "открытия карточки, корзины, заказы, выкупы, отмены, конверсии, рейтинг и остатки как контекст",
+      "grain": "report_date + nm_id + vendor_code",
+      "keys": ["report_date", "nm_id", "vendor_code"],
+      "metrics": ["open_count", "cart_count", "order_count", "order_sum", "buyout_count", "buyout_sum", "cancel_count", "cancel_sum", "add_to_cart_conversion", "cart_to_order_conversion", "buyout_percent", "avg_price", "avg_orders_count_per_day", "share_order_percent"],
+      "rows": 2215,
+      "date_range": "2025-12-31..2026-04-05",
+      "empty_now": false
+    },
+    {
+      "name": "sales.wb_sales_funnel_products",
+      "role": "периодный снимок воронки карточки",
+      "use": "периодная воронка, если таблица заполнена; сейчас не использовать для выводов",
+      "grain": "snapshot_date + period_start + period_end + nm_id",
+      "keys": ["snapshot_date", "period_start", "period_end", "nm_id", "vendor_code"],
+      "metrics": ["open_count", "cart_count", "order_count", "order_sum", "buyout_count", "buyout_sum", "cancel_count", "cancel_sum", "add_to_cart_percent", "cart_to_order_percent", "buyout_percent"],
+      "rows": 0,
+      "date_range": null,
+      "empty_now": true
+    },
+    {
+      "name": "sales.wb_sales_funnel_products_weekly",
+      "role": "недельная воронка карточки по товарам",
+      "use": "недельная воронка, если таблица заполнена; сейчас не использовать для выводов",
+      "grain": "report_week_start + nm_id + vendor_code",
+      "keys": ["report_week_start", "nm_id", "vendor_code"],
+      "metrics": ["open_count", "cart_count", "order_count", "order_sum", "buyout_count", "buyout_sum", "buyout_percent", "add_to_cart_conversion", "cart_to_order_conversion"],
+      "rows": 0,
+      "date_range": null,
+      "empty_now": true
+    },
+    {
+      "name": "sales.wb_supplier_orders_progress",
+      "role": "технический прогресс выгрузки заказов",
+      "use": "проверка последней точки инкрементальной загрузки, не бизнес-аналитика",
+      "grain": "progress row",
+      "keys": ["id"],
+      "metrics": ["last_change_date_from", "updated_at"],
+      "rows": 7,
+      "date_range": "2026-03-31T17:03:51+00:00..2026-04-05T23:34:21+00:00",
+      "empty_now": false
+    },
+    {
+      "name": "sales.wb_supplier_sales_progress",
+      "role": "технический прогресс выгрузки продаж",
+      "use": "проверка последней точки инкрементальной загрузки, не бизнес-аналитика",
+      "grain": "progress row",
+      "keys": ["id"],
+      "metrics": ["last_change_date_from", "updated_at"],
+      "rows": 7,
+      "date_range": "2026-03-31T17:55:42+00:00..2026-04-05T21:54:54+00:00",
+      "empty_now": false
+    },
+    {
+      "name": "sales.wb_sales_funnel_progress",
+      "role": "технический прогресс выгрузки воронки",
+      "use": "проверка статуса загрузки воронки, не бизнес-аналитика",
+      "grain": "period_start + period_end + snapshot_date",
+      "keys": ["id", "period_start", "period_end", "snapshot_date"],
+      "metrics": ["updated_at"],
+      "rows": 0,
+      "date_range": null,
+      "empty_now": true
+    }
+  ],
+  "data_gaps": [
+    {
+      "metric": "profitability",
+      "reason": "В sales-слое нет комиссий, логистики, хранения, штрафов и COGS.",
+      "impact": "Нельзя подтверждать прибыльность и contribution после затрат."
+    },
+    {
+      "metric": "traffic source attribution",
+      "reason": "В sales-слое нет явной привязки продаж к рекламным кампаниям и поисковым запросам.",
+      "impact": "Нельзя подтверждать рекламную инкрементальность без Marketing Agent."
+    },
+    {
+      "metric": "customer retention",
+      "reason": "Нет когорт, CRM-слоя и признака новый/повторный покупатель.",
+      "impact": "Нельзя подтверждать retention, repeat rate и CRM-эффекты."
+    }
+  ]
+}

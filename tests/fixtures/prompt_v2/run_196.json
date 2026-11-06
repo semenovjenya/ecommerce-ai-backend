@@ -1,0 +1,67 @@
+{
+  "run_id": 196,
+  "user_query": "Посчитай оборачиваемость склада, деньги в остатках и прибыль",
+  "expected_query_mode": "diagnostic",
+  "primary_domain": "finance",
+  "evidence_package": {
+    "confirmed_facts": [
+      {
+        "metric": "inventory_days_on_hand",
+        "value": 59.4,
+        "unit": "days",
+        "period": "2026-06-01/2026-06-25",
+        "status": "confirmed",
+        "evidence_ref": "run196:supply:turnover"
+      },
+      {
+        "metric": "current_stock_value_rub",
+        "value": 2500000,
+        "unit": "RUB",
+        "period": "as_of_2026-06-25",
+        "status": "confirmed",
+        "evidence_ref": "run196:supply_finance:stock_x_cost"
+      },
+      {
+        "metric": "contribution_margin_rub",
+        "value": 125000.00,
+        "unit": "RUB",
+        "period": "2026-06-01/2026-06-25",
+        "sku": "46227",
+        "status": "confirmed",
+        "evidence_ref": "run196:finance:margin"
+      }
+    ],
+    "blocking_gaps": [
+      {
+        "metric": "net_profit_rub",
+        "status": "no_data",
+        "blocking": true,
+        "reason": "metric_absent"
+      }
+    ]
+  },
+  "hazardous_draft": "Оборачиваемость точно посчитать нельзя. Деньги в текущих остатках — 100 000,00 ₽ по формуле себестоимость × проданные единицы. Чистая прибыль SKU 46227 — 125 000,00 ₽.",
+  "corrected_draft": "Оборачиваемость за 1–25 июня — 59,4 дня. Текущие остатки на согласованный срез оцениваются в 2 500 000 ₽ как остаток × себестоимость. Contribution margin SKU 46227 — 125 000,00 ₽; чистая прибыль не рассчитана.",
+  "expected_violation_codes": [
+    "contribution_margin_as_net_profit",
+    "available_metric_stated_unavailable",
+    "stock_value_uses_sold_units"
+  ],
+  "acceptance_hazards": [
+    "exact_turnover_must_use_available_tool_fact",
+    "current_stock_value_is_stock_times_unit_cost",
+    "sold_units_times_cost_is_not_current_stock_value",
+    "contribution_margin_is_not_net_profit"
+  ],
+  "required_corrected_fragments": [
+    "59,4 дня",
+    "2 500 000 ₽",
+    "остаток × себестоимость",
+    "чистая прибыль не рассчитана"
+  ],
+  "forbidden_corrected_fragments": [
+    "100 000,00 ₽",
+    "себестоимость × проданные единицы",
+    "Оборачиваемость точно посчитать нельзя"
+  ]
+}
